@@ -149,7 +149,7 @@ See the example modules' documentation for more information.
 * Feature engineering notebook, `feature_engineering/notebooks/GenerateAndWriteFeatures.py`, that reads input dataframes, dynamically loads feature computation modules, executes their `compute_features_fn` method and writes the outputs to a Feature Store table (creating it if missing).
 * Training notebook that [trains]({{ template `generate_doc_link` (map (pair "cloud" .input_cloud) (pair "path" "machine-learning/feature-store/train-models-with-feature-store.html")) }} ) a regression model by creating a training dataset using the Feature Store client.
 * Model deployment and batch inference notebooks that deploy and use the trained model. 
-* An automated integration test is provided (in `.github/workflows/{{ .input_project_name }}-run-tests.yml`) that executes a multi task run on Databricks involving the feature engineering and model training notebooks.
+* An automated integration test is provided (in `.azure/devops-pipelines/{{ .input_project_name }}-tests-ci.yml`) that executes a multi task run on Databricks involving the feature engineering and model training notebooks.
 
 To adapt this sample code for your use case, implement your own feature module, specifying configs such as input Delta tables/dataset path(s) to use when developing
 the feature engineering pipelines.
@@ -215,7 +215,7 @@ We expect a catalog to exist with the name of the deployment target by default.
 For example, if the deployment target is dev, we expect a catalog named dev to exist in the workspace. 
 If you want to use different catalog names, please update the target names declared in the [databricks.yml](./databricks.yml) file.
 {{- if (eq .input_setup_cicd_and_project `CICD_and_Project`) }}
-If changing the staging, prod, or test deployment targets, you'll also need to update the workflows located in the .github/workflows directory.
+If changing the staging, prod, or test deployment targets, you'll also need to update the pipelines located in the .azure/devops-pipelines directory.
 {{- end }}
 
 For the ML training job, you must have permissions to read the input Delta table and create experiment and models. 

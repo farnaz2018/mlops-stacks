@@ -1,5 +1,5 @@
 {
-  "welcome_message": "Welcome to MLOps Stacks. For detailed information on project generation, see the README at https://github.com/databricks/mlops-stacks/blob/main/README.md.",
+  "welcome_message": "Welcome to EDC MLOps Stack. This template is customized for Azure DevOps CI/CD and Azure cloud infrastructure.",
   "min_databricks_cli_version": "v0.236.0",
   "properties": {
     "input_setup_cicd_and_project": {
@@ -12,7 +12,7 @@
     "input_project_name": {
       "order": 2,
       "type": "string",
-      "default": "my_mlops_project",
+      "default": "EDC_mlops_project",
       "description": "\nProject Name. Default",
       "pattern": "^[^ .\\\\/]{3,}$",
       "pattern_match_failure_message": "Project name must be at least 3 characters long and cannot contain the following characters: \"\\\", \"/\", \" \" and \".\".",
@@ -42,18 +42,18 @@
       "type": "string",
       "description": "\nSelect cloud",
       "default": "azure",
-      "enum": ["azure", "aws", "gcp"]
+      "enum": ["azure"]
     },
     "input_cicd_platform": {
       "order": 5,
       "type": "string",
       "description": "\nSelect CICD platform",
-      "default": "github_actions",
-      "enum": ["github_actions", "github_actions_for_github_enterprise_servers", "azure_devops", "gitlab"],
+      "default": "azure_devops",
+      "enum": ["azure_devops"],
       "skip_prompt_if": {
         "properties": {
           "input_setup_cicd_and_project": {
-            "const": "Project_Only"
+            "const": "CICD_and_Project"
           }
         }
       }
@@ -61,7 +61,7 @@
     "input_databricks_staging_workspace_host": {
       "order": 6,
       "type": "string",
-      "default": "{{if eq .input_cloud `azure`}}https://adb-xxxx.xx.azuredatabricks.net{{else if eq .input_cloud `aws`}}https://your-staging-workspace.cloud.databricks.com{{else if eq .input_cloud `gcp`}}https://your-staging-workspace.gcp.databricks.com{{end}}",
+      "default": "https://adb-xxxx.xx.azuredatabricks.net",
       "description": "\nURL of staging Databricks workspace,\nIt will run PR CI and preview changes before they're deployed to production.\nDefault",
       "pattern": "^(https.*)?$",
       "pattern_match_failure_message": "Databricks staging workspace host URLs must start with https. Got invalid workspace host.",
@@ -76,7 +76,7 @@
     "input_databricks_prod_workspace_host": {
       "order": 7,
       "type": "string",
-      "default": "{{if eq .input_cloud `azure`}}https://adb-xxxx.xx.azuredatabricks.net{{else if eq .input_cloud `aws`}}https://your-prod-workspace.cloud.databricks.com{{else if eq .input_cloud `gcp`}}https://your-prod-workspace.gcp.databricks.com{{end}}",
+      "default": "https://adb-xxxx.xx.azuredatabricks.net",
       "description": "\nURL of production Databricks workspace.\nDefault",
       "pattern": "^(https.*)?$",
       "pattern_match_failure_message": "Databricks production workspace host URLs must start with https. Got invalid workspace host.",
@@ -320,41 +320,16 @@
     "input_docker_image": {
       "order": 20,
       "type": "string",
-      "description": "\nDocker image for the execution of Gitlab pipelines",
+      "description": "\nDocker image for the execution of Azure DevOps pipelines",
       "default": "databricksfieldeng/mlopsstacks:latest",
       "skip_prompt_if": {
-        "anyOf":[
-          {
-            "properties": {
-              "input_cicd_platform": {
-                "const": "github_actions"
-              }
-            }
-          },
-          {
-            "properties": {
-              "input_cicd_platform": {
-                "const": "github_actions_for_github_enterprise_servers"
-              }
-            }
-          },
-          {
-            "properties": {
-              "input_cicd_platform": {
-                "const": "azure_devops"
-              }
-            }
-          },
-          {
-            "properties": {
-              "input_setup_cicd_and_project": {
-                "const": "Project_Only"
-              }
-            }
+        "properties": {
+          "input_setup_cicd_and_project": {
+            "const": "Project_Only"
           }
-        ]
+        }
       }
     }
   },
-  "success_message" : "\n*** Your MLOps Stack has been created in the '{{.input_root_dir}}{{if not (eq .input_setup_cicd_and_project `CICD_Only`) }}/{{.input_project_name}}{{end}}' directory! ***\n\nPlease refer to the README.md for further instructions on getting started."
+  "success_message" : "\n*** Your EDC MLOps Stack has been created in the '{{.input_root_dir}}{{if not (eq .input_setup_cicd_and_project `CICD_Only`) }}/{{.input_project_name}}{{end}}' directory! ***\n\nPlease refer to the README.md for further instructions on getting started."
 }

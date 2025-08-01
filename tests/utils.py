@@ -12,7 +12,7 @@ AZURE_DEFAULT_PARAMS = {
     "input_root_dir": "my-mlops-project",
     "input_project_name": "my-mlops-project",
     "input_cloud": "azure",
-    "input_cicd_platform": "github_actions",
+    "input_cicd_platform": "azure_devops",
     "input_databricks_staging_workspace_host": "https://adb-xxxx.xx.azuredatabricks.net",
     "input_databricks_prod_workspace_host": "https://adb-xxxx.xx.azuredatabricks.net",
     "input_default_branch": "main",
@@ -55,8 +55,6 @@ def parametrize_by_project_generation_params(fn):
     @pytest.mark.parametrize(
         "cicd_platform",
         [
-            "github_actions",
-            "github_actions_for_github_enterprise_servers",
             "azure_devops",
         ],
     )
