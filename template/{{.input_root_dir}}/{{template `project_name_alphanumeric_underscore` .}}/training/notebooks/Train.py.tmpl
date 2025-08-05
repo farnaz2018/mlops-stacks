@@ -48,10 +48,10 @@ dbutils.library.restartPython()
 dbutils.widgets.dropdown("env", "staging", ["staging", "prod"], "Environment Name")
 env = dbutils.widgets.get("env")
 
-# Path to the Hive-registered Delta table containing the training data.
+# Path to the Delta table containing the training data.
 dbutils.widgets.text(
     "training_data_path",
-    "/databricks-datasets/nyctaxi-with-zipcodes/subsampled",
+    "TODO",
     label="Path to the training data",
 )
 
