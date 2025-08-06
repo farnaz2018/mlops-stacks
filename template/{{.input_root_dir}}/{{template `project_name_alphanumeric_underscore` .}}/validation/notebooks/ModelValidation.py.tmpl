@@ -145,13 +145,7 @@ assert model_version != "", "model_version notebook parameter must be specified"
 # take input
 enable_baseline_comparison = dbutils.widgets.get("enable_baseline_comparison")
 
-{{ if (eq .input_include_feature_store `yes`) }}
-enable_baseline_comparison = "false" 
-print(
-    "Currently baseline model comparison is not supported for models registered with feature store. Please refer to "
-    "issue https://github.com/databricks/mlops-stacks/issues/70 for more details."
-)
-{{ end }}
+
 assert enable_baseline_comparison == "true" or enable_baseline_comparison == "false"
 enable_baseline_comparison = enable_baseline_comparison == "true"
 
@@ -269,28 +263,11 @@ def rounded_taxi_data(taxi_data_df):
     return taxi_data_df
 
 
-data = rounded_taxi_data(data)
 
-
-{{ end }}
 
 # COMMAND ----------
 
-{{ if (eq .input_include_feature_store `yes`) }}
-# Temporary fix as FS model can't predict as a pyfunc model
-# MLflow evaluate can take a lambda function instead of a model uri for a model
-# but id does not work for the baseline model as it requires a model_uri (baseline comparison is set to false)
 
-from databricks.feature_store import FeatureStoreClient
-
-def get_fs_model(df):
-    fs_client = FeatureStoreClient()
-    return (
-        fs_client.score_batch(model_uri, spark.createDataFrame(df))
-        .select("prediction")
-        .toPandas()
-    )
-{{ end }}
 
 training_run = get_training_run(model_name, model_version)
 
@@ -312,11 +289,7 @@ with mlflow.start_run(
 
     try:
         eval_result = mlflow.evaluate(
-            {{ if (eq .input_include_feature_store `yes`) }}
-            model=get_fs_model,
-            {{ else }}
             model=model_uri,
-            {{ end }}
             data=data,
             targets=targets,
             model_type=model_type,

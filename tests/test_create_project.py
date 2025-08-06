@@ -23,7 +23,6 @@ DEFAULT_PARAM_VALUES = {
     "input_default_branch": "main",
     "input_release_branch": "release",
     "input_read_user_group": "users",
-    "input_include_feature_store": "no",
     "input_include_models_in_unity_catalog": "no",
     "input_schema_name": "schema_name",
     "input_unity_catalog_read_user_group": "account users",
@@ -174,7 +173,6 @@ def test_generate_project_with_default_values(
     cloud,
     cicd_platform,
     setup_cicd_and_project,
-    include_feature_store,
     include_models_in_unity_catalog,
 ):
     """
@@ -215,7 +213,6 @@ def prepareContext(
     cloud,
     cicd_platform,
     setup_cicd_and_project,
-    include_feature_store,
     include_models_in_unity_catalog,
 ):
     context = {
@@ -225,8 +222,7 @@ def prepareContext(
         "input_cloud": cloud,
         "input_cicd_platform": cicd_platform,
     }
-    if include_feature_store != "":
-        context["input_include_feature_store"] = include_feature_store
+
 
     if include_models_in_unity_catalog != "":
         context["input_include_models_in_unity_catalog"] = (
@@ -242,7 +238,6 @@ def test_generate_project_check_delta_output(
     cloud,
     cicd_platform,
     setup_cicd_and_project,
-    include_feature_store,
     include_models_in_unity_catalog,
 ):
     """
@@ -269,7 +264,7 @@ def test_generate_project_check_delta_output(
     )
     if (
         setup_cicd_and_project != "CICD_Only"
-        and include_feature_store == "no"
+    
     ):
         assert os.path.isfile(delta_notebook_path)
     else:
@@ -277,41 +272,14 @@ def test_generate_project_check_delta_output(
 
 
 @parametrize_by_project_generation_params
-def test_generate_project_check_feature_store_output(
-    tmpdir,
-    databricks_cli,
-    cloud,
-    cicd_platform,
-    setup_cicd_and_project,
-    include_feature_store,
-    include_models_in_unity_catalog,
-):
+
     """
     Asserts the behavior of feature store-related artifacts when generating MLOps Stacks.
     """
     if cloud == "gcp" and include_models_in_unity_catalog == "yes":
         # Skip test for GCP with Unity Catalog
         return
-    context = prepareContext(
-        cloud,
-        cicd_platform,
-        setup_cicd_and_project,
-        include_feature_store,
-        include_models_in_unity_catalog,
-    )
-    generate(tmpdir, databricks_cli, context=context)
-    fs_notebook_path = (
-        tmpdir
-        / TEST_PROJECT_NAME
-        / TEST_PROJECT_DIRECTORY
-        / "feature_engineering"
-        / "notebooks"
-        / "GenerateAndWriteFeatures.py"
-    )
-    if setup_cicd_and_project != "CICD_Only" and include_feature_store == "yes":
-        assert os.path.isfile(fs_notebook_path)
-    else:
-        assert not os.path.isfile(fs_notebook_path)
+
 
 
 @parametrize_by_project_generation_params
@@ -321,7 +289,6 @@ def test_generate_project_check_recipe_output(
     cloud,
     cicd_platform,
     setup_cicd_and_project,
-    include_feature_store,
     include_models_in_unity_catalog,
 ):
     """
@@ -334,7 +301,6 @@ def test_generate_project_check_recipe_output(
         cloud,
         cicd_platform,
         setup_cicd_and_project,
-        include_feature_store,
         include_models_in_unity_catalog,
     )
     generate(tmpdir, databricks_cli, context=context)

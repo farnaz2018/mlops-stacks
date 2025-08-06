@@ -18,7 +18,7 @@ AZURE_DEFAULT_PARAMS = {
     "input_default_branch": "main",
     "input_release_branch": "release",
     "input_read_user_group": "users",
-    "input_include_feature_store": "no",
+
     "input_include_models_in_unity_catalog": "no",
     "input_schema_name": "schema_name",
     "input_unity_catalog_read_user_group": "account users",
@@ -58,17 +58,13 @@ def parametrize_by_project_generation_params(fn):
         ],
     )
     @pytest.mark.parametrize(
-        "setup_cicd_and_project,include_feature_store,include_models_in_unity_catalog",
+        "setup_cicd_and_project,include_models_in_unity_catalog",
         [
-            ("CICD_and_Project", "no", "no"),
-            ("CICD_and_Project", "no", "yes"),
-            ("CICD_and_Project", "yes", "no"),
-            ("CICD_and_Project", "yes", "yes"),
-            ("Project_Only", "no", "no"),
-            ("Project_Only", "no", "yes"),
-            ("Project_Only", "yes", "no"),
-            ("Project_Only", "yes", "yes"),
-            ("CICD_Only", "no", "no"),
+            ("CICD_and_Project", "no"),
+            ("CICD_and_Project", "yes"),
+            ("Project_Only", "no"),
+            ("Project_Only", "yes"),
+            ("CICD_Only", "no"),
         ],
     )
     @wraps(fn)
@@ -85,7 +81,6 @@ def generated_project_dir(
     cloud,
     cicd_platform,
     setup_cicd_and_project,
-    include_feature_store,
     include_models_in_unity_catalog,
 ):
     params = {
@@ -107,7 +102,6 @@ def generated_project_dir(
         params.update(
             {
                 "input_project_name": "my-mlops-project",
-                "input_include_feature_store": include_feature_store,
                 "input_read_user_group": "users",
                 "input_include_models_in_unity_catalog": include_models_in_unity_catalog,
                 "input_schema_name": "schema_name",
