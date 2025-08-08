@@ -3,39 +3,89 @@ from mlflow.models import make_metric, MetricThreshold
 
 # Custom metrics to be included. Return empty list if custom metrics are not needed.
 # Please refer to custom_metrics parameter in mlflow.evaluate documentation https://mlflow.org/docs/latest/python_api/mlflow.html#mlflow.evaluate
-# TODO(optional) : custom_metrics
 def custom_metrics():
-
-    # TODO(optional) : define custom metric function to be included in custom_metrics.
-    def squared_diff_plus_one(eval_df, _builtin_metrics):
+    """
+    Custom metrics for Random Forest classification model validation.
+    """
+    def balanced_accuracy_custom(eval_df, _builtin_metrics):
         """
-        This example custom metric function creates a metric based on the ``prediction`` and
-        ``target`` columns in ``eval_df`.
+        Custom balanced accuracy metric for imbalanced classification.
         """
-        return np.sum(np.abs(eval_df["prediction"] - eval_df["target"] + 1) ** 2)
+        from sklearn.metrics import balanced_accuracy_score
+        return balanced_accuracy_score(eval_df["target"], eval_df["prediction"])
+    
+    def f1_score_custom(eval_df, _builtin_metrics):
+        """
+        Custom F1 score metric for classification.
+        """
+        from sklearn.metrics import f1_score
+        return f1_score(eval_df["target"], eval_df["prediction"], average='weighted')
+    
+    def precision_custom(eval_df, _builtin_metrics):
+        """
+        Custom precision metric for classification.
+        """
+        from sklearn.metrics import precision_score
+        return precision_score(eval_df["target"], eval_df["prediction"], average='weighted')
+    
+    def recall_custom(eval_df, _builtin_metrics):
+        """
+        Custom recall metric for classification.
+        """
+        from sklearn.metrics import recall_score
+        return recall_score(eval_df["target"], eval_df["prediction"], average='weighted')
 
-    return [make_metric(eval_fn=squared_diff_plus_one, greater_is_better=False)]
+    return [
+        make_metric(eval_fn=balanced_accuracy_custom, greater_is_better=True),
+        make_metric(eval_fn=f1_score_custom, greater_is_better=True),
+        make_metric(eval_fn=precision_custom, greater_is_better=True),
+        make_metric(eval_fn=recall_custom, greater_is_better=True)
+    ]
 
 
 # Define model validation rules. Return empty dict if validation rules are not needed.
 # Please refer to validation_thresholds parameter in mlflow.evaluate documentation https://mlflow.org/docs/latest/python_api/mlflow.html#mlflow.evaluate
-# TODO(optional) : validation_thresholds
 def validation_thresholds():
+    """
+    Validation thresholds for Random Forest classification model.
+    """
     return {
-        "max_error": MetricThreshold(
-            threshold=500, higher_is_better=False  # max_error should be <= 500
+        "accuracy": MetricThreshold(
+            threshold=0.75,  # accuracy should be >= 0.75 (75%)
+            higher_is_better=True
         ),
-        "mean_squared_error": MetricThreshold(
-            threshold=500,  # mean_squared_error should be <= 500
-            # min_absolute_change=0.01,  # mean_squared_error should be at least 0.01 greater than baseline model accuracy
-            # min_relative_change=0.01,  # mean_squared_error should be at least 1 percent greater than baseline model accuracy
-            higher_is_better=False,
+        "balanced_accuracy_custom": MetricThreshold(
+            threshold=0.70,  # balanced accuracy should be >= 0.70 (70%)
+            higher_is_better=True
         ),
+        "f1_score_custom": MetricThreshold(
+            threshold=0.70,  # F1 score should be >= 0.70 (70%)
+            higher_is_better=True
+        ),
+        "precision_custom": MetricThreshold(
+            threshold=0.70,  # precision should be >= 0.70 (70%)
+            higher_is_better=True
+        ),
+        "recall_custom": MetricThreshold(
+            threshold=0.70,  # recall should be >= 0.70 (70%)
+            higher_is_better=True
+        ),
+        "log_loss": MetricThreshold(
+            threshold=0.5,  # log loss should be <= 0.5
+            higher_is_better=False
+        )
     }
 
 
 # Define evaluator config. Return empty dict if validation rules are not needed.
 # Please refer to evaluator_config parameter in mlflow.evaluate documentation https://mlflow.org/docs/latest/python_api/mlflow.html#mlflow.evaluate
-# TODO(optional) : evaluator_config
 def evaluator_config():
-    return {}
+    """
+    Evaluator configuration for Random Forest classification model.
+    """
+    return {
+        "classifier": {
+            "pos_label": 1,  # Positive class label
+            "average": "weighted"  # Use weighted average for multi-class metrics
+        }
+    }

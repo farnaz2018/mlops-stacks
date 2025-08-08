@@ -1,11 +1,15 @@
 # Databricks notebook source
 ##################################################################################
-# This notebook runs a sql query and set the result as job task value
+# Random Forest Classification Model Monitoring
+#
+# This notebook runs a sql query to monitor classification model performance and sets the result as job task value.
+# It monitors metrics specific to Random Forest classification models.
 #
 # This notebook has the following parameters:
 #
 #  * table_name_under_monitor (required)  - The name of a table that is currently being monitored
-#  * metric_to_monitor (required)  - Metric to be monitored for threshold violation
+#  * metric_to_monitor (required)  - Classification metric to be monitored for threshold violation
+#                                   (e.g., accuracy, precision, recall, f1_score, prediction_confidence)
 #  * metric_violation_threshold (required)  - Threshold value for metric violation
 #  * num_evaluation_windows (required)  - Number of windows to check for violation
 #  * num_violation_windows (required)  - Number of windows that need to violate the threshold
@@ -20,7 +24,7 @@ dbutils.widgets.text(
 )
 # Metric to be used for threshold violation check
 dbutils.widgets.text(
-    "metric_to_monitor", "root_mean_squared_error", label="Metric to be monitored for threshold violation"
+    "metric_to_monitor", "prediction_confidence", label="Classification metric to be monitored for threshold violation"
 )
 
 # Threshold value to be checked

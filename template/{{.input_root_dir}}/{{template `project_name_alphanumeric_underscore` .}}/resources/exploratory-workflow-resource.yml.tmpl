@@ -1,0 +1,61 @@
+new_cluster: &new_cluster
+  new_cluster:
+    num_workers: 3
+    spark_version: 15.3.x-cpu-ml-scala2.12
+    node_type_id: {{template `cloud_specific_node_type_id` .}}
+    data_security_mode: "SINGLE_USER"
+    custom_tags:
+      clusterSource: mlops-stacks_{{template `stacks_version` .}}
+
+common_permissions: &permissions
+  permissions:
+    - level: CAN_VIEW
+      group_name: users
+
+resources:
+  jobs:
+    exploratory_analysis_job:
+      name: ${bundle.target}-{{ .input_project_name }}-exploratory-analysis-job
+      job_clusters:
+        - job_cluster_key: exploratory_analysis_job_cluster
+          <<: *new_cluster
+      tasks:
+        - task_key: ExploratoryAnalysis
+          job_cluster_key: exploratory_analysis_job_cluster
+          notebook_task:
+            notebook_path: ../exploratory/Exploratory.py
+            base_parameters:
+              env: ${bundle.target}
+              # TODO: Update data_path
+              data_path: /databricks-datasets/nyctaxi-with-zipcodes/subsampled
+              # TODO: Update output_path
+              output_path: /tmp/exploratory_results
+              # git source information of current ML resource deployment. It will be persisted as part of the workflow run
+              git_source_info: url:${bundle.git.origin_url}; branch:${bundle.git.branch}; commit:${bundle.git.commit}
+        - task_key: ValidateExploratory
+          job_cluster_key: exploratory_analysis_job_cluster
+          depends_on:
+            - task_key: ExploratoryAnalysis
+          notebook_task:
+            notebook_path: ../exploratory/Validate_exploratory.py
+            base_parameters:
+              env: ${bundle.target}
+              # TODO: Update data_path
+              data_path: /databricks-datasets/nyctaxi-with-zipcodes/subsampled
+              # TODO: Update analysis_results_path
+              analysis_results_path: /tmp/exploratory_results
+              # TODO: Update validation_output_path
+              validation_output_path: /tmp/validation_results
+              # git source information of current ML resource deployment. It will be persisted as part of the workflow run
+              git_source_info: url:${bundle.git.origin_url}; branch:${bundle.git.branch}; commit:${bundle.git.commit}
+      schedule:
+        quartz_cron_expression: "0 0 8 * * ?" # daily at 8am
+        timezone_id: UTC
+      <<: *permissions
+      # If you want to turn on notifications for this job, please uncomment the below code,
+      # and provide a list of emails to the on_failure argument.
+      #
+      #  email_notifications:
+      #    on_failure:
+      #      - first@company.com
+      #      - second@company.com 

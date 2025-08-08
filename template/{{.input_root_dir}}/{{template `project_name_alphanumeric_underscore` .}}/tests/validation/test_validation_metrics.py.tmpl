@@ -1,0 +1,144 @@
+import pytest
+import pandas as pd
+import numpy as np
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score, 
+    balanced_accuracy_score, log_loss
+)
+from sklearn.ensemble import RandomForestClassifier
+
+
+@pytest.fixture
+def sample_validation_data():
+    """Create sample data for validation testing"""
+    np.random.seed(42)
+    n_samples = 100
+    
+    # Generate synthetic data
+    X = np.random.randn(n_samples, 5)
+    y_true = np.random.randint(0, 2, n_samples)
+    
+    # Train a simple model for predictions
+    rf = RandomForestClassifier(random_state=42, n_estimators=10)
+    rf.fit(X, y_true)
+    y_pred = rf.predict(X)
+    y_proba = rf.predict_proba(X)
+    
+    return pd.DataFrame({
+        'target': y_true,
+        'prediction': y_pred,
+        'prediction_proba': y_proba[:, 1]
+    })
+
+
+def test_accuracy_metric(sample_validation_data):
+    """Test accuracy metric calculation"""
+    data = sample_validation_data
+    
+    accuracy = accuracy_score(data['target'], data['prediction'])
+    
+    # Assertions
+    assert 0 <= accuracy <= 1
+    assert isinstance(accuracy, float)
+
+
+def test_balanced_accuracy_metric(sample_validation_data):
+    """Test balanced accuracy metric calculation"""
+    data = sample_validation_data
+    
+    balanced_acc = balanced_accuracy_score(data['target'], data['prediction'])
+    
+    # Assertions
+    assert 0 <= balanced_acc <= 1
+    assert isinstance(balanced_acc, float)
+
+
+def test_precision_metric(sample_validation_data):
+    """Test precision metric calculation"""
+    data = sample_validation_data
+    
+    precision = precision_score(data['target'], data['prediction'], average='weighted')
+    
+    # Assertions
+    assert 0 <= precision <= 1
+    assert isinstance(precision, float)
+
+
+def test_recall_metric(sample_validation_data):
+    """Test recall metric calculation"""
+    data = sample_validation_data
+    
+    recall = recall_score(data['target'], data['prediction'], average='weighted')
+    
+    # Assertions
+    assert 0 <= recall <= 1
+    assert isinstance(recall, float)
+
+
+def test_f1_score_metric(sample_validation_data):
+    """Test F1 score metric calculation"""
+    data = sample_validation_data
+    
+    f1 = f1_score(data['target'], data['prediction'], average='weighted')
+    
+    # Assertions
+    assert 0 <= f1 <= 1
+    assert isinstance(f1, float)
+
+
+def test_log_loss_metric(sample_validation_data):
+    """Test log loss metric calculation"""
+    data = sample_validation_data
+    
+    log_loss_val = log_loss(data['target'], data['prediction_proba'])
+    
+    # Assertions
+    assert log_loss_val >= 0
+    assert isinstance(log_loss_val, float)
+
+
+def test_validation_thresholds():
+    """Test validation threshold structure"""
+    thresholds = {
+        "accuracy": 0.75,
+        "balanced_accuracy_custom": 0.70,
+        "f1_score_custom": 0.70,
+        "precision_custom": 0.70,
+        "recall_custom": 0.70,
+        "log_loss": 0.5
+    }
+    
+    # Assertions
+    assert isinstance(thresholds, dict)
+    assert "accuracy" in thresholds
+    assert "balanced_accuracy_custom" in thresholds
+    assert "f1_score_custom" in thresholds
+    assert "precision_custom" in thresholds
+    assert "recall_custom" in thresholds
+    assert "log_loss" in thresholds
+    
+    # Check threshold values
+    assert 0 <= thresholds["accuracy"] <= 1
+    assert 0 <= thresholds["balanced_accuracy_custom"] <= 1
+    assert 0 <= thresholds["f1_score_custom"] <= 1
+    assert 0 <= thresholds["precision_custom"] <= 1
+    assert 0 <= thresholds["recall_custom"] <= 1
+    assert thresholds["log_loss"] >= 0
+
+
+def test_evaluator_config():
+    """Test evaluator configuration structure"""
+    config = {
+        "classifier": {
+            "pos_label": 1,
+            "average": "weighted"
+        }
+    }
+    
+    # Assertions
+    assert isinstance(config, dict)
+    assert "classifier" in config
+    assert "pos_label" in config["classifier"]
+    assert "average" in config["classifier"]
+    assert config["classifier"]["pos_label"] == 1
+    assert config["classifier"]["average"] == "weighted" 

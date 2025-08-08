@@ -1,31 +1,55 @@
 import mlflow
-from pyspark.sql.functions import struct, lit, to_timestamp
+from pyspark.sql.functions import struct, lit, to_timestamp, col, when
 
 
 def predict_batch(
     spark_session, model_uri, input_table_name, output_table_name, model_version, ts
 ):
     """
-    Apply the model at the specified URI for batch inference on the table with name input_table_name,
-    writing results to the table with name output_table_name
+    Apply the Random Forest classifier model at the specified URI for batch inference on the table with name input_table_name,
+    writing results to the table with name output_table_name.
+    
+    This function performs classification predictions and includes both predicted class and prediction probabilities.
     """
     {{ if (eq .input_include_models_in_unity_catalog `yes`) }}
     mlflow.set_registry_uri("databricks-uc")
     {{ end }}
     table = spark_session.table(input_table_name)
     
-    predict = mlflow.pyfunc.spark_udf(
-        spark_session, model_uri, result_type="double", env_manager="virtualenv"
-    )    
+    # Load the model for classification predictions
+    model = mlflow.pyfunc.load_model(model_uri)
     
+    # Create UDF for class predictions
+    predict_class = mlflow.pyfunc.spark_udf(
+        spark_session, model_uri, result_type="int", env_manager="virtualenv"
+    )
+    
+    # Create UDF for prediction probabilities (for binary classification)
+    predict_proba = mlflow.pyfunc.spark_udf(
+        spark_session, model_uri, result_type="array<double>", env_manager="virtualenv"
+    )
+    
+    # Perform predictions
     output_df = (
-        table.withColumn("prediction", predict(struct(*table.columns)))
+        table.withColumn("prediction", predict_class(struct(*table.columns)))
+        .withColumn("prediction_proba", predict_proba(struct(*table.columns)))
+        .withColumn("prediction_confidence", col("prediction_proba")[1])  # Probability of positive class
+        .withColumn("predicted_class", 
+                   when(col("prediction") == 1, "Positive")
+                   .when(col("prediction") == 0, "Negative")
+                   .otherwise("Unknown"))
         .withColumn("model_id", lit(model_version))
         .withColumn("timestamp", to_timestamp(lit(ts)))
     )
     
-    output_df.display()
-
+    # Display sample results
+    print("Sample predictions:")
+    output_df.select("prediction", "predicted_class", "prediction_confidence", "model_id", "timestamp").show(10)
+    
     # Model predictions are written to the Delta table provided as input.
     # Delta is the default format in Databricks Runtime 8.0 and above.
     output_df.write.format("delta").mode("overwrite").saveAsTable(output_table_name)
+    
+    print(f"Batch inference completed. Results saved to table: {output_table_name}")
+    print(f"Model version used: {model_version}")
+    print(f"Total predictions made: {output_df.count()}")

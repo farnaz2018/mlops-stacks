@@ -1,10 +1,16 @@
 # Databricks notebook source
 ##################################################################################
-# Batch Inference Notebook
+# Batch Inference Notebook for Random Forest Classifier
 #
-# This notebook is an example of applying a model for batch inference against an input delta table,
+# This notebook is an example of applying a Random Forest classifier model for batch inference against an input delta table.
 # It is configured and can be executed as the batch_inference_job in the batch_inference_job workflow defined under
 # ``{{template `project_name_alphanumeric_underscore` .}}/resources/batch-inference-workflow-resource.yml``
+#
+# This notebook performs classification predictions and includes:
+# - Predicted class labels (0 or 1 for binary classification)
+# - Prediction probabilities for each class
+# - Confidence scores for predictions
+# - Model metadata and timestamps
 #
 # Parameters:
 #
@@ -13,7 +19,7 @@
 #  * output_table_name (required) - Delta table name where the predictions will be written to.
 #                                   Note that this will create a new version of the Delta table if
 #                                   the table already exists
-#  * model_name (required) - The name of the model to be used in batch inference.
+#  * model_name (required) - The name of the Random Forest classifier model to be used in batch inference.
 ##################################################################################
 
 
@@ -101,6 +107,22 @@ model_version = client.get_model_version_by_alias(model_name, alias).version{{en
 from datetime import datetime
 
 ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC #**Random Forest Classification Inference**
+# MAGIC
+# MAGIC This batch inference job performs classification predictions using the trained Random Forest model.
+# MAGIC
+# MAGIC **Output Columns:**
+# MAGIC - `prediction`: Binary class prediction (0 or 1)
+# MAGIC - `predicted_class`: Human-readable class labels ("Positive" or "Negative")
+# MAGIC - `prediction_proba`: Array of prediction probabilities for each class
+# MAGIC - `prediction_confidence`: Confidence score (probability of positive class)
+# MAGIC - `model_id`: Version of the model used for prediction
+# MAGIC - `timestamp`: When the prediction was made
+# MAGIC
 
 # COMMAND ----------
 # DBTITLE 1,Load model and run inference

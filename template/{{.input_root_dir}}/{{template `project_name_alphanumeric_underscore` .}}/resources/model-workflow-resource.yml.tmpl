@@ -20,14 +20,42 @@ resources:
         - job_cluster_key: model_training_job_cluster
           <<: *new_cluster
       tasks:
+        - task_key: Ingest
+          job_cluster_key: model_training_job_cluster
+          notebook_task:
+            notebook_path: ../training/notebooks/Ingest_data.py
+            base_parameters:
+              env: ${bundle.target}
+              # TODO: Update output_data_path
+              output_data_path: /tmp/ingested_data
+              # git source information of current ML resource deployment. It will be persisted as part of the workflow run
+              git_source_info: url:${bundle.git.origin_url}; branch:${bundle.git.branch}; commit:${bundle.git.commit}
+        - task_key: Preprocess
+          job_cluster_key: model_training_job_cluster
+          depends_on:
+            - task_key: Ingest
+          notebook_task:
+            notebook_path: ../training/notebooks/Preprocess.py
+            base_parameters:
+              env: ${bundle.target}
+              # TODO: Update input_data_path
+              input_data_path: /tmp/ingested_data
+              # TODO: Update output_data_path
+              output_data_path: /tmp/preprocessed_data
+              # TODO: Update target_column
+              target_column: fare_amount
+              # git source information of current ML resource deployment. It will be persisted as part of the workflow run
+              git_source_info: url:${bundle.git.origin_url}; branch:${bundle.git.branch}; commit:${bundle.git.commit}
         - task_key: Train
           job_cluster_key: model_training_job_cluster
+          depends_on:
+            - task_key: Preprocess
           notebook_task:
             notebook_path: ../training/notebooks/Train.py
             base_parameters:
               env: ${bundle.target}
               # TODO: Update training_data_path
-              training_data_path: /databricks-datasets/nyctaxi-with-zipcodes/subsampled
+              training_data_path: /tmp/preprocessed_data
               experiment_name: ${var.experiment_name}
               {{ if (eq .input_include_models_in_unity_catalog `no`) }}model_name: ${var.model_name}
               {{- else -}}model_name: ${var.catalog_name}.{{ .input_schema_name }}.${var.model_name}{{ end }}

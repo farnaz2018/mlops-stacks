@@ -1,0 +1,364 @@
+# Databricks notebook source
+##################################################################################
+# Exploratory Data Analysis Validation Notebook
+#
+# This notebook shows an example of validating the results from exploratory data analysis.
+# It is designed to validate data quality, consistency, and completeness after EDA.
+#
+# Parameters:
+# * env (required):                 - Environment the notebook is run in (staging, or prod). Defaults to "staging".
+# * data_path (required)            - Path to the data for validation.
+# * analysis_results_path (required) - Path to the EDA analysis results.
+# * validation_output_path (optional) - Path where validation results will be stored.
+##################################################################################
+
+# COMMAND ----------
+
+# MAGIC %load_ext autoreload
+# MAGIC %autoreload 2
+
+# COMMAND ----------
+
+import os
+notebook_path =  '/Workspace/' + os.path.dirname(dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get())
+%cd $notebook_path
+
+# COMMAND ----------
+
+# MAGIC %pip install -r ../requirements.txt
+
+# COMMAND ----------
+
+dbutils.library.restartPython()
+
+# COMMAND ----------
+
+# DBTITLE 1, Notebook arguments
+# List of input args needed to run this notebook as a job.
+# Provide them via DB widgets or notebook arguments.
+
+# Notebook Environment
+dbutils.widgets.dropdown("env", "staging", ["staging", "prod"], "Environment Name")
+env = dbutils.widgets.get("env")
+
+# Path to the data for validation.
+dbutils.widgets.text(
+    "data_path",
+    "TODO",
+    label="Path to the data for validation",
+)
+
+# Path to the EDA analysis results.
+dbutils.widgets.text(
+    "analysis_results_path",
+    "TODO",
+    label="Path to the EDA analysis results",
+)
+
+# Path where validation results will be stored.
+dbutils.widgets.text(
+    "validation_output_path",
+    "TODO",
+    label="Path where validation results will be stored",
+)
+
+# COMMAND ----------
+
+# DBTITLE 1, Define input and output variables
+data_path = dbutils.widgets.get("data_path")
+analysis_results_path = dbutils.widgets.get("analysis_results_path")
+validation_output_path = dbutils.widgets.get("validation_output_path")
+
+# COMMAND ----------
+
+# DBTITLE 1, Load data and analysis results
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+import json
+
+# Initialize Spark session
+spark = SparkSession.builder.appName("ExploratoryDataValidation").getOrCreate()
+
+# Read original data
+print(f"Reading data from: {data_path}")
+df = spark.read.format("delta").load(data_path)
+
+# Read analysis results if available
+analysis_results = None
+if analysis_results_path != "TODO":
+    try:
+        analysis_results = spark.read.format("delta").load(analysis_results_path)
+        print("Analysis results loaded successfully")
+    except Exception as e:
+        print(f"Could not load analysis results: {e}")
+
+print("Dataset Overview:")
+print(f"Number of rows: {df.count()}")
+print(f"Number of columns: {len(df.columns)}")
+
+# COMMAND ----------
+
+# DBTITLE 1, Data quality validation
+# Validate data quality metrics
+print("Data Quality Validation:")
+
+# Check for null values
+null_validation = []
+for column in df.columns:
+    null_count = df.filter(col(column).isNull()).count()
+    total_count = df.count()
+    null_percentage = (null_count / total_count) * 100 if total_count > 0 else 0
+    
+    null_validation.append({
+        'column': column,
+        'null_count': null_count,
+        'null_percentage': null_percentage,
+        'quality_score': max(0, 100 - null_percentage)
+    })
+
+null_df = spark.createDataFrame(null_validation)
+print("Null Value Validation:")
+null_df.show()
+
+# COMMAND ----------
+
+# DBTITLE 1, Data type validation
+# Validate data types
+print("Data Type Validation:")
+data_type_validation = []
+
+for field in df.schema.fields:
+    # Check for expected data types
+    expected_types = {
+        'integer': ['integer', 'long'],
+        'double': ['double', 'float'],
+        'string': ['string'],
+        'timestamp': ['timestamp']
+    }
+    
+    actual_type = field.dataType.typeName()
+    is_valid = any(actual_type in types for types in expected_types.values())
+    
+    data_type_validation.append({
+        'column': field.name,
+        'actual_type': actual_type,
+        'is_valid_type': is_valid,
+        'validation_passed': is_valid
+    })
+
+type_validation_df = spark.createDataFrame(data_type_validation)
+print("Data Type Validation Results:")
+type_validation_df.show()
+
+# COMMAND ----------
+
+# DBTITLE 1, Value range validation
+# Validate value ranges for numeric columns
+numeric_columns = [field.name for field in df.schema.fields if field.dataType.typeName() in ['integer', 'double', 'float']]
+
+if numeric_columns:
+    print("Value Range Validation:")
+    range_validation = []
+    
+    for col_name in numeric_columns:
+        # Calculate statistics
+        stats = df.select(
+            min(col_name).alias("min"),
+            max(col_name).alias("max"),
+            mean(col_name).alias("mean"),
+            stddev(col_name).alias("stddev")
+        ).collect()[0]
+        
+        # Check for outliers (values beyond 3 standard deviations)
+        outlier_count = df.filter(
+            (col(col_name) < stats['mean'] - 3 * stats['stddev']) |
+            (col(col_name) > stats['mean'] + 3 * stats['stddev'])
+        ).count()
+        
+        range_validation.append({
+            'column': col_name,
+            'min_value': stats['min'],
+            'max_value': stats['max'],
+            'mean_value': stats['mean'],
+            'stddev_value': stats['stddev'],
+            'outlier_count': outlier_count,
+            'has_outliers': outlier_count > 0
+        })
+    
+    range_df = spark.createDataFrame(range_validation)
+    range_df.show()
+
+# COMMAND ----------
+
+# DBTITLE 1, Categorical value validation
+# Validate categorical columns
+categorical_columns = [field.name for field in df.schema.fields if field.dataType.typeName() == 'string']
+
+if categorical_columns:
+    print("Categorical Value Validation:")
+    categorical_validation = []
+    
+    for col_name in categorical_columns:
+        # Count unique values
+        unique_count = df.select(col_name).distinct().count()
+        total_count = df.count()
+        
+        # Check for high cardinality (too many unique values)
+        cardinality_ratio = unique_count / total_count if total_count > 0 else 0
+        high_cardinality = cardinality_ratio > 0.5
+        
+        # Check for empty strings
+        empty_string_count = df.filter(col(col_name) == "").count()
+        
+        categorical_validation.append({
+            'column': col_name,
+            'unique_values': unique_count,
+            'cardinality_ratio': cardinality_ratio,
+            'high_cardinality': high_cardinality,
+            'empty_string_count': empty_string_count,
+            'has_empty_strings': empty_string_count > 0
+        })
+    
+    categorical_df = spark.createDataFrame(categorical_validation)
+    categorical_df.show()
+
+# COMMAND ----------
+
+# DBTITLE 1, Consistency validation
+# Validate data consistency
+print("Data Consistency Validation:")
+consistency_validation = []
+
+# Check for duplicate rows
+duplicate_count = df.count() - df.dropDuplicates().count()
+consistency_validation.append({
+    'validation_type': 'duplicate_rows',
+    'issue_count': duplicate_count,
+    'has_issues': duplicate_count > 0,
+    'severity': 'high' if duplicate_count > 0 else 'none'
+})
+
+# Check for columns with all null values
+for column in df.columns:
+    null_count = df.filter(col(column).isNull()).count()
+    total_count = df.count()
+    
+    if null_count == total_count:
+        consistency_validation.append({
+            'validation_type': f'all_null_column_{column}',
+            'issue_count': 1,
+            'has_issues': True,
+            'severity': 'high'
+        })
+
+# Check for columns with single value (no variation)
+for column in df.columns:
+    unique_count = df.select(column).distinct().count()
+    if unique_count == 1:
+        consistency_validation.append({
+            'validation_type': f'single_value_column_{column}',
+            'issue_count': 1,
+            'has_issues': True,
+            'severity': 'medium'
+        })
+
+consistency_df = spark.createDataFrame(consistency_validation)
+print("Consistency Validation Results:")
+consistency_df.show()
+
+# COMMAND ----------
+
+# DBTITLE 1, Cross-reference with analysis results
+# Validate against EDA results if available
+if analysis_results is not None:
+    print("Cross-referencing with EDA Results:")
+    
+    # Compare basic statistics
+    eda_row_count = analysis_results.select("total_rows").collect()[0]["total_rows"]
+    current_row_count = df.count()
+    
+    row_count_match = eda_row_count == current_row_count
+    
+    print(f"Row count match: {row_count_match}")
+    print(f"EDA row count: {eda_row_count}")
+    print(f"Current row count: {current_row_count}")
+    
+    if not row_count_match:
+        print("WARNING: Row count mismatch between EDA and current data!")
+
+# COMMAND ----------
+
+# DBTITLE 1, Generate validation summary
+# Create comprehensive validation summary
+print("Validation Summary:")
+
+# Calculate overall quality score
+total_columns = len(df.columns)
+quality_scores = null_df.select("quality_score").collect()
+avg_quality_score = sum([row["quality_score"] for row in quality_scores]) / len(quality_scores) if quality_scores else 0
+
+# Count validation issues
+total_issues = 0
+high_severity_issues = 0
+medium_severity_issues = 0
+
+if consistency_df.count() > 0:
+    for row in consistency_df.collect():
+        if row["has_issues"]:
+            total_issues += 1
+            if row["severity"] == "high":
+                high_severity_issues += 1
+            elif row["severity"] == "medium":
+                medium_severity_issues += 1
+
+validation_summary = {
+    "total_columns": total_columns,
+    "total_rows": df.count(),
+    "average_quality_score": avg_quality_score,
+    "total_validation_issues": total_issues,
+    "high_severity_issues": high_severity_issues,
+    "medium_severity_issues": medium_severity_issues,
+    "validation_passed": high_severity_issues == 0
+}
+
+print("Validation Summary:")
+for key, value in validation_summary.items():
+    print(f"{key}: {value}")
+
+# COMMAND ----------
+
+# DBTITLE 1, Save validation results
+# Save validation results
+if validation_output_path != "TODO":
+    print(f"Saving validation results to: {validation_output_path}")
+    
+    # Combine all validation results
+    validation_results = spark.createDataFrame([validation_summary])
+    validation_results.write.mode("overwrite").format("delta").save(validation_output_path)
+    
+    print("Validation results saved successfully!")
+
+# COMMAND ----------
+
+# DBTITLE 1, Final validation report
+print("=" * 50)
+print("EXPLORATORY DATA VALIDATION REPORT")
+print("=" * 50)
+
+print(f"Dataset: {data_path}")
+print(f"Total Rows: {validation_summary['total_rows']}")
+print(f"Total Columns: {validation_summary['total_columns']}")
+print(f"Average Quality Score: {validation_summary['average_quality_score']:.2f}%")
+
+print(f"\nValidation Issues:")
+print(f"- Total Issues: {validation_summary['total_validation_issues']}")
+print(f"- High Severity: {validation_summary['high_severity_issues']}")
+print(f"- Medium Severity: {validation_summary['medium_severity_issues']}")
+
+if validation_summary['validation_passed']:
+    print("\n✅ VALIDATION PASSED - Data quality is acceptable for analysis")
+else:
+    print("\n❌ VALIDATION FAILED - Data quality issues detected")
+    print("Please review and address the high severity issues before proceeding")
+
+print("=" * 50) 

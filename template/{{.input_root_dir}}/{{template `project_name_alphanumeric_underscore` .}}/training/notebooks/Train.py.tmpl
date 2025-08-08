@@ -8,7 +8,7 @@
 #
 # Parameters:
 # * env (required):                 - Environment the notebook is run in (staging, or prod). Defaults to "staging".
-# * training_data_path (required)   - Path to the training data.
+# * training_data_path (required)   - Path to the preprocessed training data.
 # * experiment_name (required)      - MLflow experiment name for the training runs. Will be created if it doesn't exist.
 {{- if (eq .input_include_models_in_unity_catalog "no") }}
 # * model_name (required)           - MLflow registered model name to use for the trained model. Will be created if it
@@ -48,11 +48,11 @@ dbutils.library.restartPython()
 dbutils.widgets.dropdown("env", "staging", ["staging", "prod"], "Environment Name")
 env = dbutils.widgets.get("env")
 
-# Path to the Delta table containing the training data.
+# Path to the preprocessed training data.
 dbutils.widgets.text(
     "training_data_path",
     "TODO",
-    label="Path to the training data",
+    label="Path to the preprocessed training data",
 )
 
 # MLflow experiment name.
@@ -78,28 +78,331 @@ dbutils.widgets.text(
 
 # COMMAND ----------
 
-# DBTITLE 1,Define input and output variables
-input_table_path = dbutils.widgets.get("training_data_path")
+# DBTITLE 1, Define input and output variables
+training_data_path = dbutils.widgets.get("training_data_path")
 experiment_name = dbutils.widgets.get("experiment_name")
 model_name = dbutils.widgets.get("model_name")
 
 # COMMAND ----------
 
-# DBTITLE 1, Set experiment
+# DBTITLE 1, Load preprocessed data
+import joblib
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, precision_score, recall_score, f1_score
+import matplotlib.pyplot as plt
+import seaborn as sns
 import mlflow
+import mlflow.sklearn
+from mlflow.models.signature import infer_signature
+import os
 
+print(f"Loading preprocessed data from: {training_data_path}")
+
+# Load the preprocessed data from the previous step
+preprocessed_data = joblib.load(f"{training_data_path}/preprocessed_data.pkl")
+
+# Extract the train/test splits
+X_train = preprocessed_data['X_train']
+X_test = preprocessed_data['X_test']
+y_train = preprocessed_data['y_train']
+y_test = preprocessed_data['y_test']
+feature_names = preprocessed_data['feature_names']
+categorical_features = preprocessed_data['categorical_features']
+target_column = preprocessed_data['target_column']
+
+print("Data loaded successfully!")
+print(f"X_train shape: {X_train.shape}")
+print(f"X_test shape: {X_test.shape}")
+print(f"y_train shape: {y_train.shape}")
+print(f"y_test shape: {y_test.shape}")
+
+# COMMAND ----------
+
+# DBTITLE 1, MLflow setup
+# RUN THIS CELL ONLY IF DOING SERVERLESS COMPUTE OTHERWISE SKIP IT, there is an issue with mlflow on servelerss link for issue is below
+# https://community.databricks.com/t5/machine-learning/using-datbricks-connect-with-serverless-compute-and-mlflow/td-p/97590
+print(mlflow.get_tracking_uri())
+# Workaround to set the registry URI manually
+mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = lambda: "databricks-uc"
+
+mlflow.login() # This prints an INFO-log: Login successful!
+
+# COMMAND ----------
+
+# DBTITLE 1, Set up MLflow experiment
 mlflow.set_experiment(experiment_name)
 
 {{- if (eq .input_include_models_in_unity_catalog "yes") }}
 mlflow.set_registry_uri('databricks-uc')
-
 {{end -}}
 
 # COMMAND ----------
 
-# DBTITLE 1, Load raw data
-training_df = spark.read.format("delta").load(input_table_path)
-training_df.display()
+# DBTITLE 1, Train Random Forest Model with MLflow tracking
+# Start MLflow run for Random Forest (main model)
+with mlflow.start_run(run_name="Random_Forest_Classifier"):
+    print("Training Random Forest model...")
+    
+    # Train Random Forest model
+    model = RandomForestClassifier(
+        random_state=42, 
+        n_estimators=100, 
+        class_weight='balanced',
+        max_depth=10,
+        min_samples_split=2,
+        min_samples_leaf=1
+    )
+    model.fit(X_train, y_train)
+    
+    # Make predictions
+    predictions = model.predict(X_test)
+    predictions_proba = model.predict_proba(X_test)
+    
+    # Calculate metrics
+    accuracy = accuracy_score(y_test, predictions)
+    precision = precision_score(y_test, predictions, average='weighted')
+    recall = recall_score(y_test, predictions, average='weighted')
+    f1 = f1_score(y_test, predictions, average='weighted')
+    
+    print(f'Random Forest Accuracy: {accuracy:.4f}')
+    print(f'Precision: {precision:.4f}')
+    print(f'Recall: {recall:.4f}')
+    print(f'F1 Score: {f1:.4f}')
+    
+    # Log parameters
+    mlflow.log_params({
+        "random_state": 42,
+        "n_estimators": 100,
+        "class_weight": "balanced",
+        "max_depth": 10,
+        "min_samples_split": 2,
+        "min_samples_leaf": 1,
+        "model_type": "RandomForestClassifier"
+    })
+    
+    # Log metrics
+    mlflow.log_metrics({
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1_score": f1
+    })
+    
+    # Log model with signature
+    signature = infer_signature(X_train, model.predict(X_train))
+    mlflow.sklearn.log_model(
+        model, 
+        "random_forest_model", 
+        signature=signature,
+        registered_model_name=model_name
+    )
+    
+    print("Random Forest model logged to MLflow Model Registry")
+
+# COMMAND ----------
+
+# DBTITLE 1, Model Evaluation and Visualization
+# Create confusion matrix
+cm = confusion_matrix(y_test, predictions)
+
+# Plot confusion matrix
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+            xticklabels=['Class 0', 'Class 1'], 
+            yticklabels=['Class 0', 'Class 1'])
+plt.ylabel('Actual')
+plt.xlabel('Predicted')
+plt.title('Random Forest Confusion Matrix')
+plt.tight_layout()
+
+# Save confusion matrix plot
+confusion_matrix_path = "confusion_matrix.png"
+plt.savefig(confusion_matrix_path, dpi=300, bbox_inches='tight')
+plt.show()
+
+# Log confusion matrix image
+mlflow.log_artifact(confusion_matrix_path, "confusion_matrix.png")
+
+# COMMAND ----------
+
+# DBTITLE 1, Feature Importance Analysis
+# Create feature importance DataFrame
+feature_importance = pd.DataFrame({
+    'feature': feature_names,
+    'importance': model.feature_importances_
+})
+feature_importance = feature_importance.sort_values('importance', ascending=False)
+
+print("Random Forest Feature Importance (Top 20):")
+print(feature_importance.head(20))
+
+# Plot feature importance
+plt.figure(figsize=(12, 8))
+top_features = feature_importance.head(20)
+sns.barplot(x='importance', y='feature', data=top_features, palette="viridis")
+plt.xlabel("Feature Importance")
+plt.title("Random Forest Feature Importance (Top 20)")
+plt.tight_layout()
+
+# Save feature importance plot
+feature_importance_path = "feature_importance.png"
+plt.savefig(feature_importance_path, dpi=300, bbox_inches='tight')
+plt.show()
+
+# Log feature importance image
+mlflow.log_artifact(feature_importance_path, "feature_importance.png")
+
+# COMMAND ----------
+
+# DBTITLE 1, Classification Report
+# Generate and display classification report
+print("Random Forest Classification Report:")
+print(classification_report(y_test, predictions))
+
+# Save classification report as text file
+classification_report_text = classification_report(y_test, predictions)
+with open("classification_report.txt", "w") as f:
+    f.write(classification_report_text)
+
+# Log classification report
+mlflow.log_artifact("classification_report.txt", "classification_report.txt")
+
+# COMMAND ----------
+
+# DBTITLE 1, Model Performance Summary
+# Create performance summary plot
+fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+
+# Accuracy
+ax1.bar(['Accuracy'], [accuracy], color='skyblue')
+ax1.set_ylim(0, 1)
+ax1.set_title('Accuracy')
+ax1.set_ylabel('Score')
+
+# Precision, Recall, F1
+metrics = ['Precision', 'Recall', 'F1 Score']
+scores = [precision, recall, f1]
+ax2.bar(metrics, scores, color=['lightcoral', 'lightgreen', 'gold'])
+ax2.set_ylim(0, 1)
+ax2.set_title('Performance Metrics')
+ax2.set_ylabel('Score')
+
+# Feature importance top 10
+top_10_features = feature_importance.head(10)
+ax3.barh(range(len(top_10_features)), top_10_features['importance'])
+ax3.set_yticks(range(len(top_10_features)))
+ax3.set_yticklabels(top_10_features['feature'])
+ax3.set_xlabel('Importance')
+ax3.set_title('Top 10 Feature Importance')
+
+# Confusion matrix
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax4)
+ax4.set_title('Confusion Matrix')
+ax4.set_ylabel('Actual')
+ax4.set_xlabel('Predicted')
+
+plt.tight_layout()
+
+# Save performance summary plot
+performance_summary_path = "performance_summary.png"
+plt.savefig(performance_summary_path, dpi=300, bbox_inches='tight')
+plt.show()
+
+# Log performance summary image
+mlflow.log_artifact(performance_summary_path, "performance_summary.png")
+
+# COMMAND ----------
+
+# DBTITLE 1, Model Metadata Logging
+# Log additional model metadata
+model_metadata = {
+    "training_samples": len(X_train),
+    "test_samples": len(X_test),
+    "n_features": len(feature_names),
+    "n_classes": len(np.unique(y_train)),
+    "feature_names": feature_names,
+    "categorical_features": categorical_features,
+    "target_column": target_column,
+    "model_parameters": {
+        "n_estimators": model.n_estimators,
+        "max_depth": model.max_depth,
+        "min_samples_split": model.min_samples_split,
+        "min_samples_leaf": model.min_samples_leaf,
+        "class_weight": model.class_weight
+    }
+}
+
+# Save model metadata as JSON
+import json
+with open("model_metadata.json", "w") as f:
+    json.dump(model_metadata, f, indent=2)
+
+# Log model metadata
+mlflow.log_artifact("model_metadata.json", "model_metadata.json")
+
+print("Model metadata logged successfully!")
+print("Model training and evaluation completed!")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC #**Step 6: Model Registration and Deployment**
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC **Accessing MLflow UI**
+# MAGIC
+# MAGIC To view the values you have logged using MLflow, including parameters, metrics, and the model itself, you can use the MLflow User Interface (UI). Here's how to access and use it:
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC **Start MLflow UI**:
+# MAGIC
+# MAGIC If you're running MLflow on your local machine, MLflow automatically starts a tracking server that stores run data in the directory mlruns/ within your current working directory. To view the UI, you can start it from your command line by running:
+# MAGIC
+# MAGIC mlflow ui
+# MAGIC
+# MAGIC This command starts a local web server. By default, the MLflow UI will be available at http://127.0.0.1:5000 on your web browser.
+# MAGIC
+# MAGIC **Using a Remote Server**: If you are logging to a remote MLflow server, ensure you have the server's URL. You can set the tracking URI in your script using:
+# MAGIC
+# MAGIC mlflow.set_tracking_uri("http://your_mlflow_server:port")
+# MAGIC
+# MAGIC Replace "http://your_mlflow_server:port" with the actual URL and port of your MLflow tracking server.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC #**Step 7: Navigating Databricks MLflow UI**
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Once you access the MLflow UI, you can navigate it to find logged parameters, metrics, and models:
+# MAGIC
+# MAGIC **Experiments**: On the main page, you will see a list of experiments. Each experiment corresponds to a different project or a different aspect of the same project. Click on an experiment to see all the runs.
+# MAGIC
+# MAGIC **Runs**: Inside an experiment, each run represents an execution of your model training script. Runs are listed with their start time and an auto-generated run ID. Click on a specific run to explore it in detail.
+# MAGIC
+# MAGIC **Parameters and Metrics**: Within a run's details page, you will see sections for Parameters and Metrics. Here, you can find the values you logged, such as model parameters and performance metrics.
+# MAGIC
+# MAGIC **Artifacts**: This section will contain the serialized model file and all logged artifacts including confusion matrix, feature importance plots, and model metadata.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC #**Step 8: Register the model to Unity Catalog**
+
+# COMMAND ----------
+
+# DBTITLE 1, Register model to Unity Catalog
+mlflow.set_registry_uri("databricks-uc")
+CATALOG_NAME = ""
+SCHEMA_NAME = ""
 
 # COMMAND ----------
 
@@ -120,57 +423,14 @@ def get_latest_model_version(model_name):
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC Train a LightGBM model on the data, then log and register the model with MLflow.
-
-# COMMAND ----------
-
-# DBTITLE 1, Train model
-import mlflow
-from sklearn.model_selection import train_test_split
-import lightgbm as lgb
-import mlflow.lightgbm
-
-# Collect data into a Pandas array for training. Since the timestamp columns would likely
-# cause the model to overfit the data, exclude them to avoid training on them.
-columns = [col for col in training_df.columns if col not in ['tpep_pickup_datetime', 'tpep_dropoff_datetime']]
-data = training_df.toPandas()[columns]
-
-train, test = train_test_split(data, random_state=123)
-X_train = train.drop(["fare_amount"], axis=1)
-X_test = test.drop(["fare_amount"], axis=1)
-y_train = train.fare_amount
-y_test = test.fare_amount
-
-mlflow.lightgbm.autolog()
-train_lgb_dataset = lgb.Dataset(X_train, label=y_train.values)
-test_lgb_dataset = lgb.Dataset(X_test, label=y_test.values)
-
-param = {"num_leaves": 32, "objective": "regression", "metric": "rmse"}
-num_rounds = 100
-
-# Train a lightGBM model
-model = lgb.train(param, train_lgb_dataset, num_rounds)
-
-# COMMAND ----------
-
-# DBTITLE 1, Log model and return output.
-# Take the first row of the training dataset as the model input example.
-input_example = X_train.iloc[[0]]
-
-# Log the trained model with MLflow
-mlflow.lightgbm.log_model(
-    model, 
-    artifact_path="lgb_model", 
-    # The signature is automatically inferred from the input example and its predicted output.
-    input_example=input_example,    
-    registered_model_name=model_name
-)
-
+# DBTITLE 1, Get model URI and set task values
 # The returned model URI is needed by the model deployment notebook.
 model_version = get_latest_model_version(model_name)
 model_uri = f"models:/{model_name}/{model_version}"
 dbutils.jobs.taskValues.set("model_uri", model_uri)
 dbutils.jobs.taskValues.set("model_name", model_name)
 dbutils.jobs.taskValues.set("model_version", model_version)
+print(f"Model URI: {model_uri}")
+print(f"Model Name: {model_name}")
+print(f"Model Version: {model_version}")
 dbutils.notebook.exit(model_uri)

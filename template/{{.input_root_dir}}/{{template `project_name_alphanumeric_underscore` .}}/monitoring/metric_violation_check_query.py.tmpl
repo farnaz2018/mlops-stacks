@@ -1,4 +1,5 @@
-# This file is used for the main SQL query that checks the last {num_evaluation_windows} metric violations and whether at least {num_violation_windows} of those runs violate the condition.
+# This file is used for the main SQL query that checks the last {num_evaluation_windows} metric violations 
+# for Random Forest classification models and whether at least {num_violation_windows} of those runs violate the condition.
 
 import sys
 import pathlib
@@ -6,7 +7,7 @@ import pathlib
 sys.path.append(str(pathlib.Path(__file__).parent.parent.parent.resolve()))
 
 """The SQL query is divided into three main parts. The first part selects the top {num_evaluation_windows}
-values of the metric to be monitored, ordered by the time window, and saves as recent_metrics.
+values of the classification metric to be monitored, ordered by the time window, and saves as recent_metrics.
 ```sql
 WITH recent_metrics AS (
   SELECT
@@ -25,13 +26,13 @@ WITH recent_metrics AS (
     {num_evaluation_windows}
 )
 ```
-The `column_name = ":table"` and `slice_key IS NULL` conditions ensure that the metric
+The `column_name = ":table"` and `slice_key IS NULL` conditions ensure that the classification metric
 is selected for the entire table within the given granularity. The `log_type = "INPUT"`
 condition ensures that the primary table metrics are considered, but not the baseline
 table metrics. The `model_id!= "*"` condition ensures that the metric aggregated across
 all model IDs is not selected.
 
-The second part of the query determines if the metric values have been violated with two cases. 
+The second part of the query determines if the classification metric values have been violated with two cases. 
 The first case checks if the metric value is greater than the threshold for at least {num_violation_windows} windows:
 ```sql
 (SELECT COUNT(*) FROM recent_metrics WHERE {metric_to_monitor} > {metric_violation_threshold}) >= {num_violation_windows}
@@ -47,9 +48,9 @@ The final part of the query sets the `query_result` to 1 if both of the above co
 SELECT
   CASE
     WHEN
-      # Check if the metric value is greater than the threshold for at least {num_violation_windows} windows
+      # Check if the classification metric value is greater than the threshold for at least {num_violation_windows} windows
       AND
-      # Check if the most recent metric value is greater than the threshold
+      # Check if the most recent classification metric value is greater than the threshold
     THEN 1
     ELSE 0
   END AS query_result

@@ -1,0 +1,396 @@
+# Databricks notebook source
+##################################################################################
+# Data Preprocessing Notebook
+#
+# This notebook shows an example of a Data Preprocessing pipeline using Delta tables.
+# It is configured and can be executed as the "Preprocess" task in the model_training_job workflow defined under
+# ``{{template `project_name_alphanumeric_underscore` .}}/resources/model-workflow-resource.yml``
+#
+# Parameters:
+# * env (required):                 - Environment the notebook is run in (staging, or prod). Defaults to "staging".
+# * input_data_path (required)      - Path to the input data.
+# * output_data_path (required)     - Path where the preprocessed data will be stored.
+# * target_column (required)        - Name of the target column for the model.
+##################################################################################
+
+# COMMAND ----------
+
+# MAGIC %load_ext autoreload
+# MAGIC %autoreload 2
+
+# COMMAND ----------
+
+import os
+notebook_path =  '/Workspace/' + os.path.dirname(dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get())
+%cd $notebook_path
+
+# COMMAND ----------
+
+# MAGIC %pip install -r ../../requirements.txt
+
+# COMMAND ----------
+
+dbutils.library.restartPython()
+
+# COMMAND ----------
+
+# DBTITLE 1, Notebook arguments
+# List of input args needed to run this notebook as a job.
+# Provide them via DB widgets or notebook arguments.
+
+# Notebook Environment
+dbutils.widgets.dropdown("env", "staging", ["staging", "prod"], "Environment Name")
+env = dbutils.widgets.get("env")
+
+# Path to the input data.
+dbutils.widgets.text(
+    "input_data_path",
+    "TODO",
+    label="Path to the input data",
+)
+
+# Path where the preprocessed data will be stored.
+dbutils.widgets.text(
+    "output_data_path",
+    "TODO",
+    label="Path where the preprocessed data will be stored",
+)
+
+# Name of the target column for the model.
+dbutils.widgets.text(
+    "target_column",
+    "target",
+    label="Name of the target column",
+)
+
+# COMMAND ----------
+
+# DBTITLE 1, Define input and output variables
+input_data_path = dbutils.widgets.get("input_data_path")
+output_data_path = dbutils.widgets.get("output_data_path")
+target_column = dbutils.widgets.get("target_column")
+
+# COMMAND ----------
+
+# DBTITLE 1, Load input data
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+
+# Initialize Spark session
+spark = SparkSession.builder.appName("DataPreprocessing").getOrCreate()
+
+# Read input data from the ingest step
+print(f"Reading data from: {input_data_path}")
+result_df = spark.read.format("delta").load(input_data_path)
+
+print("Original dataset info:")
+print(f"Number of rows: {result_df.count()}")
+print(f"Number of columns: {len(result_df.columns)}")
+result_df.printSchema()
+
+# COMMAND ----------
+
+# DBTITLE 1, Convert Spark DataFrame to Pandas
+# Convert the Spark DataFrame to Pandas for sklearn processing
+print("Converting Spark DataFrame to Pandas...")
+result_df = result_df.toPandas()
+print("Conversion completed!")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC #**STEP 3: Feature Engineering**
+
+# COMMAND ----------
+
+# DBTITLE 1, Handle missing values with advanced imputation
+import pandas as pd
+import numpy as np
+
+# Create a copy of the dataframe for processing
+df = result_df.copy()
+
+print("Starting feature engineering and missing value imputation...")
+
+# COMMAND ----------
+
+# DBTITLE 1, Impute missing values with equal distribution approach
+# Impute 'TODO' --- only If you did not do it earlier as in the sql joins earlier 
+# Avoiding the imputation using any statistical method (mode/median ..etc) which will imbalance the variable more, 
+# You can choose either an "exactly‐equal" approach or a "random draw with equal probability" approach.
+
+# Example for a specific missing column - replace 'missing_col' with your actual column name
+# TODO: Update the column name based on your actual data
+missing_col_name = 'TODO'  # Replace with your actual column name
+
+if missing_col_name in df.columns:
+    print(f"Processing missing values in column: {missing_col_name}")
+    
+    # 1) mask of missing  
+    mask = df[missing_col_name].isna()  
+    n_missing = mask.sum()  
+    
+    if n_missing > 0:
+        # 2) the list of non‐NA categories  
+        cats = df.loc[~mask, missing_col_name].unique()  
+        k = len(cats)  
+        
+        # OPTION A) EXACTLY EQUAL COUNTS  
+        # ----------------------------------  
+        # integer division and remainder  
+        base = n_missing // k  
+        rem = n_missing % k  
+        
+        # build an array of assignments  
+        assignments = np.repeat(cats, base)          # each category repeated base times  
+        if rem:  
+            assignments = np.concatenate([assignments, cats[:rem]])  # give the first `rem` cats one extra  
+        
+        # shuffle so we don't always fill in by the same block  
+        np.random.shuffle(assignments)  
+        
+        # assign back  
+        df.loc[mask, missing_col_name] = assignments  
+        
+        print(f"Imputed {n_missing} missing values in {missing_col_name}")
+        print(df[missing_col_name].value_counts())
+    else:
+        print(f"No missing values found in {missing_col_name}")
+
+# COMMAND ----------
+
+# DBTITLE 1, Handle 'NA' string values as missing
+# Treats the string "NA" in missing_col as missing,
+# Computes how many "NA"'s you have,
+# Finds the set of real categories,
+# Imputes the "NA" rows so that each real category gets exactly the same number of replacements (up to a small remainder),
+# Shuffles so the imputation isn't in block‐order, and
+# Puts the new labels back in your DataFrame.
+
+# Example for a specific column with 'NA' string values
+# TODO: Update the column name based on your actual data
+na_col_name = 'TODO'  # Replace with your actual column name
+
+if na_col_name in df.columns:
+    print(f"Processing 'NA' string values in column: {na_col_name}")
+    
+    # 1) identify the rows to impute  
+    mask = df[na_col_name] == 'NA'            # if they were stored as the string "NA"   
+    n_missing = mask.sum()  
+    
+    if n_missing > 0:
+        print(f"Need to impute {n_missing} rows")  
+        
+        # 2) get the list of existing categories (excluding the "NA" bucket)  
+        cats = df.loc[~mask, na_col_name].unique()  
+        k = len(cats)  
+        print(f"Found {k} real categories: {cats}")  
+        
+        # 3) OPTION A) EXACT EQUAL COUNT IMPUTATION  
+        base = n_missing // k  
+        rem = n_missing % k  
+        
+        # build replacement array  
+        replacements = np.repeat(cats, base)   # each category repeated base times  
+        if rem:  
+            # give the first 'rem' categories one extra  
+            replacements = np.concatenate([replacements, cats[:rem]])  
+        
+        # sanity check  
+        assert len(replacements) == n_missing  
+        
+        # shuffle so imputations aren't all in one block  
+        np.random.shuffle(replacements)  
+        
+        # 4) assign back into the masked rows  
+        df.loc[mask, na_col_name] = replacements  
+        
+        # 5) inspect the result  
+        print(df[na_col_name].value_counts())
+    else:
+        print(f"No 'NA' string values found in {na_col_name}")
+
+# COMMAND ----------
+
+# DBTITLE 1, Import required libraries for preprocessing
+import pandas as pd  
+from sklearn.compose import ColumnTransformer  
+from sklearn.preprocessing import OneHotEncoder, LabelEncoder
+from sklearn.pipeline import Pipeline  
+from sklearn.model_selection import train_test_split  
+from sklearn.ensemble import RandomForestClassifier  
+from sklearn.metrics import classification_report, accuracy_score  
+
+# COMMAND ----------
+
+# DBTITLE 1, Update result_df with processed data
+result_df = df
+print("Updated dataset with imputed values:")
+display(result_df)
+
+# COMMAND ----------
+
+# DBTITLE 1, Display column information
+print("Available columns:")
+print(result_df.columns.tolist())
+
+# COMMAND ----------
+
+# DBTITLE 1, Define categorical features
+# Make sure that the ColumnTransformer and any other steps in your pipeline are correctly defined. 
+# Specifically, ensure that the categorical features you specified do not include the Target Variable
+
+# TODO: Update this list with your actual categorical column names
+categorical_features = [
+    # TODO: Add your categorical column names here
+    # Example: 'category_col1', 'category_col2', etc.
+]
+
+print(f"Categorical features: {categorical_features}")
+
+# COMMAND ----------
+
+# DBTITLE 1, Prepare target and feature variables
+# Target variable  
+y = result_df[target_column]  # Select the target column  
+X = result_df.drop(columns=[target_column])  # Drop the target column  
+
+print(f"Target variable: {target_column}")
+print(f"Feature columns: {X.columns.tolist()}")
+print(f"Target distribution:")
+print(y.value_counts())
+
+# COMMAND ----------
+
+# DBTITLE 1, Create preprocessing pipeline
+# Create the ColumnTransformer for preprocessing  
+preprocessor = ColumnTransformer(  
+    transformers=[  
+        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)  # OneHotEncode categorical features  
+    ],  
+    remainder='passthrough'  # Keep other columns unchanged if any remain  
+)
+
+# COMMAND ----------
+
+# DBTITLE 1, Initialize model and create pipeline
+# Initialize the Random Forest Classifier model  
+# For example, when using RandomForestClassifier, you can set the class_weight parameter to 'balanced':
+model = RandomForestClassifier(random_state=42, class_weight='balanced')
+
+# Create a pipeline that first transforms the data and then fits the model  
+pipeline = Pipeline(steps=[  
+    ('preprocessor', preprocessor),  # Step for preprocessing  
+    ('model', model)  # Step for model fitting  
+])  
+
+# Get the required columns from the preprocessor  
+if categorical_features:
+    required_columns = pipeline.named_steps['preprocessor'].transformers[0][2]  
+    # Check if all required columns are present in the DataFrame  
+    missing_columns = [col for col in required_columns if col not in X.columns]  
+    if missing_columns:  
+        raise ValueError(f"The following required columns are missing from the DataFrame: {missing_columns}")
+
+# COMMAND ----------
+
+# DBTITLE 1, Check for missing values in features
+print("Missing values in feature columns:")
+print(X.isna().sum())
+
+# COMMAND ----------
+
+# DBTITLE 1, Advanced preprocessing with LabelEncoder
+# Replace any unexpected string values with np.nan (if necessary)  
+X.replace({'NA': np.nan}, inplace=True)  
+
+# Check for categorical columns  
+if not categorical_features:
+    categorical_features = X.select_dtypes(include=['object']).columns.tolist()
+    print(f"Auto-detected categorical features: {categorical_features}")
+
+# Create a function to apply LabelEncoder to each categorical column  
+def encode_labels(X, categorical_features):  
+    for col in categorical_features:  
+        if col in X.columns:
+            le = LabelEncoder()  
+            X[col] = le.fit_transform(X[col].astype(str))  # Ensure the column is treated as string  
+    return X  
+
+# COMMAND ----------
+
+# DBTITLE 1, Encode categorical features and target
+# Encode categorical features  
+X_encoded = encode_labels(X, categorical_features)  
+
+# One-hot encode the target variable y (if it's a multi-class classification problem)  
+y_encoder = OneHotEncoder(sparse=False)  # Use sparse=False to return an array instead of a sparse matrix  
+y_encoded = y_encoder.fit_transform(y.values.reshape(-1, 1))  # Reshape y for the encoder  
+
+print("Encoding completed!")
+print(f"X shape after encoding: {X_encoded.shape}")
+print(f"y shape after encoding: {y_encoded.shape}")
+
+# COMMAND ----------
+
+# DBTITLE 1, Create train-test split
+# Proceed with train-test split    
+X_train, X_test, y_train, y_test = train_test_split(X_encoded, y_encoded, test_size=0.2, random_state=42)   
+
+print("Train-test split completed!")
+print(f"X_train shape: {X_train.shape}")
+print(f"X_test shape: {X_test.shape}")
+print(f"y_train shape: {y_train.shape}")
+print(f"y_test shape: {y_test.shape}")
+
+# COMMAND ----------
+
+# DBTITLE 1, Save preprocessed data
+# Save the preprocessed data to the specified output path
+print(f"Saving preprocessed data to: {output_data_path}")
+
+# Convert back to Spark DataFrame for saving
+from pyspark.sql.types import *
+
+# Create a combined DataFrame with features and target
+# For simplicity, we'll save the encoded features and target separately
+preprocessed_data = {
+    'X_train': X_train,
+    'X_test': X_test, 
+    'y_train': y_train,
+    'y_test': y_test,
+    'feature_names': X_encoded.columns.tolist(),
+    'categorical_features': categorical_features,
+    'target_column': target_column
+}
+
+# Save as pickle or joblib for sklearn compatibility
+import joblib
+import os
+
+# Create output directory if it doesn't exist
+os.makedirs(output_data_path, exist_ok=True)
+
+# Save the preprocessed data
+joblib.dump(preprocessed_data, f"{output_data_path}/preprocessed_data.pkl")
+
+print("Data preprocessing completed successfully!")
+
+# COMMAND ----------
+
+# DBTITLE 1, Log preprocessing metrics
+# Log important metrics for monitoring
+preprocessing_metrics = {
+    "original_rows": len(result_df),
+    "original_columns": len(result_df.columns),
+    "categorical_features": len(categorical_features),
+    "X_train_rows": X_train.shape[0],
+    "X_test_rows": X_test.shape[0],
+    "X_train_columns": X_train.shape[1],
+    "y_train_classes": y_train.shape[1] if len(y_train.shape) > 1 else 1,
+    "output_path": output_data_path
+}
+
+print("Preprocessing Metrics:")
+for key, value in preprocessing_metrics.items():
+    print(f"{key}: {value}") 
