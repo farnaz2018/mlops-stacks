@@ -1,5 +1,5 @@
 {
-  "welcome_message": "Welcome to EDC MLOps Stack. This template is customized for Azure DevOps CI/CD and Azure cloud infrastructure.",
+  "welcome_message": "Welcome to customized MLOps Stack. This template is customized for Azure DevOps CI/CD and Azure cloud infrastructure.",
   "min_databricks_cli_version": "v0.236.0",
   "properties": {
     "input_setup_cicd_and_project": {
@@ -287,5 +287,5 @@
       }
     }
   },
-  "success_message" : "\n*** Your EDC MLOps Stack has been created in the '{{.input_root_dir}}{{if not (eq .input_setup_cicd_and_project `CICD_Only`) }}/{{.input_project_name}}{{end}}' directory! ***\n\nPlease refer to the README.md for further instructions on getting started."
+  "success_message" : "\n*** Your customized MLOps Stack has been created in the '{{.input_root_dir}}{{if not (eq .input_setup_cicd_and_project `CICD_Only`) }}/{{.input_project_name}}{{end}}' directory! ***\n\nPlease refer to the README.md for further instructions on getting started."
 }
